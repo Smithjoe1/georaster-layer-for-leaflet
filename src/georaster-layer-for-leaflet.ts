@@ -51,6 +51,7 @@ if (!L)
 
 const zip = (a: any[], b: any[]) => a.map((it, i) => [it, b[i]]);
 
+
 const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.Class = L.GridLayer.extend({
   options: {
     updateWhenIdle: true,
@@ -293,13 +294,20 @@ const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.C
     const topLeft = rasterCoordsForTileCoords(0, 0);
     const bottomRight = rasterCoordsForTileCoords(numberOfSamplesDown, numberOfSamplesAcross);
 
+    const tileHeight = this.tileHeight;
+    const tileWidth = this.tileWidth;
+    const debugLevel = this.debugLevel;
+
     const getValuesOptions = {
       bottom: bottomRight?.y,
       height: numberOfSamplesDown,
       left: topLeft?.x,
       right: bottomRight?.x,
       top: topLeft?.y,
-      width: numberOfSamplesAcross
+      width: numberOfSamplesAcross,
+      tileHeight: tileHeight,
+      tileWidth: tileWidth,
+      debugLevel: debugLevel
     };
 
     if (!Object.values(getValuesOptions).every(it => it !== undefined && isFinite(it))) {
@@ -338,6 +346,7 @@ const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.C
 
     const resolution = this._getResolution(coords.z);
     const key = `${coordsKey}:${resolution}`;
+    const resampleMethod = this.resampleMethod;
     const doneCb = (error?: Error, tile?: HTMLElement): void => {
       done(error, tile);
 
@@ -351,7 +360,7 @@ const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.C
       done(undefined, this.cache[key]);
       return this.cache[key];
     } else {
-      this.drawTile({ tile, coords, context, done: doneCb, resolution });
+      this.drawTile({ tile, coords, context, done: doneCb, resolution, resampleMethod });
     }
 
     return tile;
@@ -369,6 +378,7 @@ const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.C
 
       // stringified hash of tile coordinates for caching purposes
       const cacheKey = [coords.x, coords.y, coords.z].join(",");
+      const debugcacheKey = [coords.x, coords.y, coords.z];
       if (debugLevel >= 2) log({ cacheKey });
 
       const mapCRS = this.getMapCRS();
@@ -399,12 +409,16 @@ const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.C
       const extentOfTile = new GeoExtent(boundsOfTile, { srs: inSimpleCRS ? "simple" : 4326 });
       if (debugLevel >= 2) log({ extentOfTile });
 
-      // create blue outline around tiles
+       //create blue outline around tiles
       if (debugLevel >= 4) {
         if (!this._cache.tile[cacheKey]) {
-          this._cache.tile[cacheKey] = L.rectangle(extentOfTile.leafletBounds, { fillOpacity: 0 })
-            .addTo(this.getMap())
-            .bindTooltip(cacheKey, { direction: "center", permanent: true });
+          if(debugcacheKey[0] % 3 === 0){
+            if(debugcacheKey[1] % 3 === 0){
+              this._cache.tile[cacheKey] = L.rectangle(extentOfTile.leafletBounds, { fillOpacity: 0 })
+              .addTo(this.getMap())
+              .bindTooltip(cacheKey, { direction: "center", permanent: true });
+            }
+          }
         }
       }
 
@@ -422,12 +436,16 @@ const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.C
       // create blue outline around tiles
       if (debugLevel >= 4) {
         if (!this._cache.innerTile[cacheKey]) {
-          const ext = inSimpleCRS ? extentOfInnerTileInMapCRS : extentOfInnerTileInMapCRS.reproj(4326);
-          this._cache.innerTile[cacheKey] = L.rectangle(ext.leafletBounds, {
-            color: "#F00",
-            dashArray: "5, 10",
-            fillOpacity: 0
-          }).addTo(this.getMap());
+          if(debugcacheKey[0] % 3 === 0){
+            if(debugcacheKey[1] % 3 === 0){
+              const ext = inSimpleCRS ? extentOfInnerTileInMapCRS : extentOfInnerTileInMapCRS.reproj(4326);
+          //this._cache.innerTile[cacheKey] = L.rectangle(ext.leafletBounds, {
+          //  color: "#F00",
+          //  dashArray: "5, 10",
+          //  fillOpacity: 0
+          //}).addTo(this.getMap());
+            }
+          }
         }
       }
 
@@ -478,8 +496,21 @@ const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.C
 
       const overdrawTileAcross = rasterPixelsAcross < maxSamplesAcross;
       const overdrawTileDown = rasterPixelsDown < maxSamplesDown;
-      const numberOfSamplesAcross = overdrawTileAcross ? snappedSamplesAcross : maxSamplesAcross;
-      const numberOfSamplesDown = overdrawTileDown ? snappedSamplesDown : maxSamplesDown;
+
+
+      ///////////////////////////////////////////
+      //const numberOfSamplesAcross = overdrawTileAcross ? snappedSamplesAcross : maxSamplesAcross;
+      //const numberOfSamplesDown = overdrawTileDown ? snappedSamplesDown : maxSamplesDown;
+      //////////////////////////////////////////////
+
+      var numberOfSamplesAcross = maxSamplesAcross;
+      var numberOfSamplesDown = maxSamplesDown;
+
+      if (this.resampleMethod == "nearest"){
+        const numberOfSamplesAcross = overdrawTileAcross ? snappedSamplesAcross : maxSamplesAcross;
+        const numberOfSamplesDown = overdrawTileDown ? snappedSamplesDown : maxSamplesDown;
+
+      }
 
       if (debugLevel >= 3)
         console.log(
@@ -512,15 +543,21 @@ const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.C
         }
       }
 
-      // create outline around raster pixels
+      // create purple outline around raster pixels
       if (debugLevel >= 4) {
-        if (!this._cache.innerTile[cacheKey]) {
-          const ext = inSimpleCRS ? extentOfInnerTileInMapCRS : extentOfInnerTileInMapCRS.reproj(4326);
-          this._cache.innerTile[cacheKey] = L.rectangle(ext.leafletBounds, {
-            color: "#F00",
-            dashArray: "5, 10",
-            fillOpacity: 0
-          }).addTo(this.getMap());
+        
+        if(debugcacheKey[0] % 3 === 0){
+          if(debugcacheKey[1] % 3 === 0){
+            if (!this._cache.innerTile[cacheKey]) {
+              const ext = inSimpleCRS ? extentOfInnerTileInMapCRS : extentOfInnerTileInMapCRS.reproj(4326);
+              this._cache.innerTile[cacheKey] = L.rectangle(ext.leafletBounds, {
+                color: "#FF00D1",
+                dashArray: "4, 8",
+                weight: 2,
+                fillOpacity: 0
+              }).addTo(this.getMap());  //debugLayer
+            }
+          } 
         }
       }
 
@@ -535,12 +572,32 @@ const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.C
 
       // we round here because sometimes there will be slight floating arithmetic issues
       // where the padding is like 0.00000000000001
-      const padding = {
+      var padding = {
         left: Math.round((extentOfInnerTileInMapCRS.xmin - extentOfTileInMapCRS.xmin) / widthOfScreenPixelInMapCRS),
         right: Math.round((extentOfTileInMapCRS.xmax - extentOfInnerTileInMapCRS.xmax) / widthOfScreenPixelInMapCRS),
         top: Math.round((extentOfTileInMapCRS.ymax - extentOfInnerTileInMapCRS.ymax) / heightOfScreenPixelInMapCRS),
         bottom: Math.round((extentOfInnerTileInMapCRS.ymin - extentOfTileInMapCRS.ymin) / heightOfScreenPixelInMapCRS)
       };
+
+      //Add a bit of extra padding if we're resampling tiles so it resamples over the edge
+      if(this.resampleMethod != "nearest"){
+
+      // Find the width of a pixel from the source image and add 2x to the buffer
+      // 2x has added because the pixel doesnt line up on a tile edge perfectly and I'm too lazy to work it out exactly
+      // extra It would probably add around a ((pixels width or height) + tilesize / tilesize) percentage of cpu usage, but better than having to load a giant GEOTIFF file
+        const extraPaddingWidth = Math.round(this.tileWidth / rasterPixelsAcross * 2);
+        const extraPaddingHeight = Math.round(this.tileHeight / rasterPixelsDown * 2);
+
+        
+        if (debugLevel >= 3) log("extra Padding Width : " + extraPaddingWidth);
+        if (debugLevel >= 3) log("extra Padding Height : " + extraPaddingHeight);
+        padding = {
+          left: padding.left - extraPaddingWidth ,
+          right: padding.right - extraPaddingWidth,
+          top: padding.top - extraPaddingHeight,
+          bottom: padding.bottom - extraPaddingHeight 
+        };
+      }
       if (debugLevel >= 3) log({ padding });
 
       const innerTileHeight = this.tileHeight - padding.top - padding.bottom;
@@ -548,11 +605,24 @@ const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.C
       if (debugLevel >= 3) log({ innerTileHeight, innerTileWidth });
 
       if (debugLevel >= 4) {
-        const xMinOfInnerTileInMapCRS = extentOfTileInMapCRS.xmin + padding.left * widthOfScreenPixelInMapCRS;
-        const yMinOfInnerTileInMapCRS = extentOfTileInMapCRS.ymin + padding.bottom * heightOfScreenPixelInMapCRS;
-        const xMaxOfInnerTileInMapCRS = extentOfTileInMapCRS.xmax - padding.right * widthOfScreenPixelInMapCRS;
-        const yMaxOfInnerTileInMapCRS = extentOfTileInMapCRS.ymax - padding.top * heightOfScreenPixelInMapCRS;
-        log({ xMinOfInnerTileInMapCRS, yMinOfInnerTileInMapCRS, xMaxOfInnerTileInMapCRS, yMaxOfInnerTileInMapCRS });
+        if(debugcacheKey[0] % 3 === 0){
+          if(debugcacheKey[1] % 3 === 0){
+            const xMinOfInnerTileInMapCRS = extentOfTileInMapCRS.xmin + padding.left * widthOfScreenPixelInMapCRS;
+            const yMinOfInnerTileInMapCRS = extentOfTileInMapCRS.ymin + padding.bottom * heightOfScreenPixelInMapCRS;
+            const xMaxOfInnerTileInMapCRS = extentOfTileInMapCRS.xmax - padding.right * widthOfScreenPixelInMapCRS;
+            const yMaxOfInnerTileInMapCRS = extentOfTileInMapCRS.ymax - padding.top * heightOfScreenPixelInMapCRS;
+            
+            const InnerTileInMapCRSwithPadding = new GeoExtent([xMinOfInnerTileInMapCRS, yMinOfInnerTileInMapCRS, xMaxOfInnerTileInMapCRS, yMaxOfInnerTileInMapCRS], { srs:"EPSG:3857" });
+            const extInnerTileInMapPadding = inSimpleCRS ? InnerTileInMapCRSwithPadding : InnerTileInMapCRSwithPadding.reproj(4326);
+            
+            //add green  extra buffer border to window
+            this._cache.innerTile[cacheKey] = L.rectangle(extInnerTileInMapPadding.leafletBounds, {
+              color: "#32FF00",
+              dashArray: "5, 10",
+              fillOpacity: 0
+            }).addTo(this.getMap());
+          }
+        }
       }
 
       const canvasPadding = {
@@ -578,6 +648,8 @@ const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.C
       if (debugLevel >= 3) console.log("setting tile height to " + canvasHeight + "px");
       if (debugLevel >= 3) console.log("setting tile width to " + canvasWidth + "px");
 
+
+
       // set how large to display each sample in screen pixels
       const heightOfSampleInScreenPixels = innerTileHeight / numberOfSamplesDown;
       const heightOfSampleInScreenPixelsInt = Math.ceil(heightOfSampleInScreenPixels);
@@ -595,6 +667,23 @@ const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.C
       const yTopOfInnerTile = tileNwPoint.y + padding.top;
       const innerTileTopLeftPoint = { x: xLeftOfInnerTile, y: yTopOfInnerTile };
       if (debugLevel >= 4) log({ innerTileTopLeftPoint });
+      
+
+      // create blue outline around tiles with padding
+      if (debugLevel >= 4) {
+        //if (!this._cache.tile[cacheKey]) {
+          if(debugcacheKey[0] % 3 === 0){
+            if(debugcacheKey[1] % 3 === 0){
+              this._cache.tile[cacheKey] = L.rectangle(oldExtentOfInnerTileInRasterCRS.leafletBounds, { 
+                fillOpacity: 0, 
+                color: "#FF0000", 
+                weight: 1
+              }).addTo(this.getMap())
+            //.bindTooltip(cacheKey, { direction: "center", permanent: true });
+        //}
+            }
+          }
+      }
 
       // render asynchronously so tiles show up as they finish instead of all at once (which blocks the UI)
       setTimeout(async () => {
@@ -654,6 +743,7 @@ const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.C
           }
 
           await this.checkIfYCbCr;
+
 
           for (let h = 0; h < numberOfSamplesDown; h++) {
             const yCenterInMapPixels = yTopOfInnerTile + (h + 0.5) * heightOfSampleInScreenPixels;
