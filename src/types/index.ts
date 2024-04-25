@@ -8,7 +8,7 @@ export type PixelValuesToColorFn = (values: number[]) => string;
 
 export type DebugLevel = 0 | 1 | 2 | 3 | 4 | 5;
 
-export type ResampleMethod = "bilinear" | "nearest";
+export type ResampleMethod = "bicubic" | "bilinear" | "nearest";
 
 export type SimplePoint = {
   x: number;
@@ -79,7 +79,10 @@ export type GetValuesOptions = {
   right?: number;
   top?: number;
   width: number;
-  resampleMethod?: ResampleMethod
+  resampleMethod?: ResampleMethod;
+  tileWidth ?: number;
+  tileHeight ?: number;
+  debugLevel ?: DebugLevel;
 };
 
 export type GeoRasterValues = number[][][];
