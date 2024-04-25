@@ -307,7 +307,7 @@ const GeoRasterLayer: (new (options: GeoRasterLayerOptions) => any) & typeof L.C
       width: numberOfSamplesAcross,
       tileHeight: tileHeight,
       tileWidth: tileWidth,
-      debugLevel: debugLevel
+      debugLevel: debugLevel || 0
     };
 
     if (!Object.values(getValuesOptions).every(it => it !== undefined && isFinite(it))) {
